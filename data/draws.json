@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-10-28T13:09:43Z",
+  "periods": [
+    {
+      "draw_date": "2026-09-25",
+      "extra_sixth": [],
+      "first": [
+        "54348835",
+        "44991397",
+        "06595111"
+      ],
+      "grand": "91098182",
+      "label": "115年07-08月",
+      "period": "11504",
+      "special": "89996565"
+    },
+    {
+      "draw_date": "2026-07-25",
+      "extra_sixth": [],
+      "first": [
+        "24121106",
+        "28589937",
+        "83663333"
+      ],
+      "grand": "10138845",
+      "label": "115年05-06月",
+      "period": "11503",
+      "special": "38548029"
+    }
+  ],
+  "schema": 1,
+  "source": "https://invoice.etax.nat.gov.tw/index.html"
+}

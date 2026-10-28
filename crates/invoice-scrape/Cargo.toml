@@ -1,0 +1,11 @@
+[package]
+name = "invoice-scrape"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
+invoice-core.workspace = true
+ureq.workspace = true
+flate2.workspace = true
+sha2.workspace = true

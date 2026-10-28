@@ -1,0 +1,17 @@
+/target
+**/*.rs.bk
+*.pdb
+
+# 使用者執行期資料（不進版控）
+/data/cloud_*.bin
+/data/manifest.local.json
+
+# 作業系統
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 編輯器
+.vscode/*
+!.vscode/extensions.json
+.idea/

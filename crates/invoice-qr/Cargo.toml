@@ -1,0 +1,10 @@
+[package]
+name = "invoice-qr"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
+invoice-core.workspace = true
+rqrr.workspace = true
+image.workspace = true

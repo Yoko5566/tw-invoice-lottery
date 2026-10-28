@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "app_version": "0.1.0",
+  "generated_at": "2026-10-28T13:14:17Z",
+  "period_latest": "115年07-08月",
+  "dataset_url": "https://raw.githubusercontent.com/Yoko5566/tw-invoice-lottery-data/main/data/draws.json",
+  "dataset_bytes": 674,
+  "dataset_sha256": "599d0c9a15b03c223c6811c608b15972a4ab29707f101788360783554391e011",
+  "cloud": []
+}

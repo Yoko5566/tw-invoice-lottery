@@ -1,0 +1,175 @@
+openapi: 3.1.0
+info:
+  title: 台灣統一發票對獎 API
+  version: 0.1.0
+  description: |
+    比對台灣統一發票是否中獎。資料來源為財政部稅務入口網公告之統一發票中獎號碼單。
+
+    使用方式（Custom GPT Actions）：
+      1. 把 `servers.url` 換成你的公開 HTTPS 端點（雲端主機或反向代理後的網址）。
+      2. 在 ChatGPT 建立 GPT → Actions → 貼上此 schema。
+      3. 建議把 `check_invoice` 設為主要操作，並在 GPT 指令中說明「一律先呼叫工具再回答」。
+
+    隱私：本 API 不保存上傳的圖片與發票號碼，回應後即丟棄。
+servers:
+  - url: https://your-domain.example.com
+    description: 請替換成你的部署網址（必須是公開 HTTPS）
+paths:
+  /api/status:
+    get:
+      operationId: getDataStatus
+      summary: 取得資料版本與可用期別
+      description: 回傳目前載入的期別、各期特別獎／特獎／頭獎號碼與領獎期間，以及雲端發票專屬獎名單是否已載入。
+      responses:
+        "200":
+          description: 資料狀態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataStatus"
+  /api/check:
+    get:
+      operationId: checkInvoice
+      summary: 比對一張發票是否中獎
+      description: |
+        輸入發票字軌號碼進行對獎。
+
+        - 電子發票請輸入 10 碼（2 碼英文字軌 + 8 碼數字），例如 `AB12345678`
+        - 紙本長條發票請輸入 8 碼數字，例如 `12345678`
+        - `period` 可省略，省略時使用資料集中最新一期
+        - 若同時對中多個獎別，依法規只能擇一領取，回傳會列出最高獎項
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: 發票字軌號碼（10 碼含英文字軌，或 8 碼純數字）
+          schema:
+            type: string
+            examples:
+              - AB12345678
+              - "12345678"
+        - name: period
+          in: query
+          required: false
+          description: 期別代碼，例如 11504 代表 115 年 07-08 月
+          schema:
+            type: string
+            examples:
+              - "11504"
+      responses:
+        "200":
+          description: 對獎結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckResult"
+        "400":
+          description: 參數錯誤
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    CheckResult:
+      type: object
+      required: [ok, code, period, is_winner, hits, notes]
+      properties:
+        ok:
+          type: boolean
+        code:
+          type: string
+          description: 正規化後的發票號碼
+        period:
+          type: string
+          description: 期別名稱，例如 115年07-08月
+        period_code:
+          type: string
+          description: 期別代碼，例如 11504
+        draw_date:
+          type: string
+          description: 開獎日（YYYY-MM-DD）
+        redeem_start:
+          type: string
+          description: 領獎期間起日
+        redeem_end:
+          type: string
+          description: 領獎期間迄日
+        days_left:
+          type: integer
+          description: 距領獎截止天數，負數表示已逾期
+        is_winner:
+          type: boolean
+        best_prize:
+          type: [string, "null"]
+          description: 最高中獎獎別
+        best_amount:
+          type: number
+          description: 最高中獎金額（新台幣）
+        winner_tax_id:
+          type: boolean
+          description: 是否打了買受人統一編號（營業人不得領獎）
+        cloud_state:
+          type: string
+          enum: [hit, miss, not_loaded]
+          description: 雲端發票專屬獎比對狀態
+        hits:
+          type: array
+          items:
+            type: object
+            properties:
+              prize:
+                type: string
+              amount:
+                type: number
+              net_amount:
+                type: number
+                description: 扣繳 20% 所得稅後的實領金額（僅三獎以上）
+              matched:
+                type: string
+              detail:
+                type: string
+        notes:
+          type: array
+          items:
+            type: string
+          description: 稅務與領獎注意事項
+    DataStatus:
+      type: object
+      properties:
+        app_version:
+          type: string
+        dataset_origin:
+          type: string
+        generated_at:
+          type: string
+        cloud_loaded:
+          type: boolean
+        periods:
+          type: array
+          items:
+            type: object
+            properties:
+              period:
+                type: string
+              label:
+                type: string
+              special:
+                type: string
+              grand:
+                type: string
+              first:
+                type: array
+                items:
+                  type: string
+              redeem_start:
+                type: string
+              redeem_end:
+                type: string
+    Error:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: string

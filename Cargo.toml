@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/invoice-core",
+    "crates/invoice-scrape",
+    "crates/invoice-qr",
+    "crates/invoice-bin",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license-file = "LICENSE"
+authors = ["Zaka"]
+repository = "https://github.com/Yoko5566/tw-invoice-lottery"
+
+[workspace.dependencies]
+invoice-core = { path = "crates/invoice-core" }
+invoice-scrape = { path = "crates/invoice-scrape" }
+invoice-qr = { path = "crates/invoice-qr" }
+ureq = { version = "2", default-features = false, features = ["tls"] }
+flate2 = "1"
+rqrr = "0.9"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+sha2 = "0.10"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

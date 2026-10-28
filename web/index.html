@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>統一發票對獎台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="scanline" aria-hidden="true"></div>
+
+<header class="bar">
+  <div class="brand">
+    <span class="dot" id="health"></span>
+    <strong>統一發票對獎台</strong>
+    <span class="ver" id="version">v—</span>
+  </div>
+  <div class="status" id="dataset">資料載入中…</div>
+</header>
+
+<main>
+  <section class="panel" id="upload-panel">
+    <h2>① 上傳發票照片</h2>
+    <p class="hint">支援電子發票證明聯（自動讀取左下 QR）。拍照時請拉平、避開反光、讓 QR 填滿畫面。</p>
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="選擇或拖放發票照片">
+      <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+        <path d="M12 16V4m0 0L7 9m5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+              fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>拖放照片到此處，或<u>點擊選擇</u></span>
+      <span class="tiny">也可以直接 Ctrl+V 貼上截圖</span>
+      <input type="file" id="file" accept="image/*" hidden>
+    </div>
+    <div class="preview" id="preview"></div>
+  </section>
+
+  <section class="panel">
+    <h2>② 或手動輸入號碼</h2>
+    <p class="hint">電子發票可輸入 10 碼字軌（如 <code>AB12345678</code>）；紙本長條發票輸入 8 碼數字即可。</p>
+    <form id="manual">
+      <div class="row">
+        <input id="code" name="code" inputmode="text" autocomplete="off" spellcheck="false"
+               placeholder="AB12345678 或 12345678" maxlength="14">
+        <select id="period" name="period" aria-label="期別"></select>
+      </div>
+      <button type="submit">對獎</button>
+    </form>
+  </section>
+
+  <section class="panel result" id="result" hidden>
+    <h2>③ 結果</h2>
+    <div id="result-body"></div>
+  </section>
+
+  <section class="panel wide">
+    <h2>資料狀態</h2>
+    <div id="periods" class="periods"></div>
+    <div class="actions">
+      <button class="ghost" id="btn-update" type="button">檢查並更新中獎號碼</button>
+      <button class="ghost" id="btn-cloud" type="button">下載雲端發票專屬獎</button>
+    </div>
+    <p class="hint" id="update-msg" role="status"></p>
+  </section>
+</main>
+
+<footer>
+  <p>號碼來源：財政部稅務入口網 統一發票中獎號碼單。本工具僅協助比對，實際兌領以財政部公告與代發獎金單位為準。</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
