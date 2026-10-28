@@ -66,14 +66,14 @@
 
 **Acceptance criteria:**
 - [x] `rg -n "CHANGE_ME|your-domain|your-repo" .` 只剩刻意保留的文件範例，或完全沒有結果。
-- [ ] `DEFAULT_MANIFEST_URL` 指向可匿名 HTTPS 存取的位置。
+- [x] `DEFAULT_MANIFEST_URL` 指向可匿名 HTTPS 存取的位置。
 - [x] `data/manifest.json` 與產生腳本使用相同基底 URL。
 
 **Verification:**
-- [ ] 在無 GitHub 登入狀態下，以瀏覽器開啟 manifest URL 成功。
-- [ ] URL 回傳的不是登入頁或 404。
+- [x] 未帶 GitHub 認證直接下載 manifest 與 `draws.json`，HTTP 皆為 200。
+- [x] 公開資料的檔案大小與 SHA-256 均和 manifest 完全一致。
 
-**Dependencies:** Task 3；GitHub owner 與 repository 名稱已確認，等待建立 Private 原始碼 repository 與 Public 資料 repository  
+**Dependencies:** Task 3；Private 原始碼 repository 與 Public 資料 repository 已建立並推送  
 **Files likely touched:** `crates/invoice-bin/src/store.rs`, `data/manifest.json`, `scripts/make_manifest.sh`, `README.md`  
 **Estimated scope:** M
 
@@ -136,14 +136,14 @@
 **Description:** 將原始碼放入 Private GitHub repository，保留公開政府資料的獨立下載通道。
 
 **Acceptance criteria:**
-- [ ] 本地 main 分支有初始 commit。
-- [ ] `origin` 指向正確的 Private repository。
-- [ ] GitHub 頁面可看到完整來源與 workflow。
+- [x] 本地 main 分支有初始 commit。
+- [x] `origin` 指向正確的 Private repository。
+- [x] GitHub 頁面可看到完整來源與 workflow。
 
 **Verification:**
-- [ ] `git status`
-- [ ] `git remote -v`
-- [ ] `git push -u origin main`
+- [x] `git status`
+- [x] `git remote -v`
+- [x] `git push -u origin main`
 
 **Dependencies:** Task 4  
 **Files likely touched:** `.gitignore`、repository metadata  

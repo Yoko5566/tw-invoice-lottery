@@ -42,7 +42,7 @@ Windows C++ Build Tools + rustup
 
 ### Phase 2: 補齊資料更新與真實情境驗證
 
-- [ ] Task 4：決定公開資料下載位置並移除 `CHANGE_ME`
+- [x] Task 4：決定公開資料下載位置並移除 `CHANGE_ME`
 - [ ] Task 5：更新一般獎資料並建立可驗證 manifest
 - [ ] Task 6：建立／發佈雲端專屬獎索引
 - [ ] Task 7：使用真實發票照片驗證 QR 流程
@@ -55,7 +55,7 @@ Windows C++ Build Tools + rustup
 
 ### Phase 3: GitHub 與可下載成品
 
-- [ ] Task 8：建立 Private Git repository 並推送
+- [x] Task 8：建立 Private Git repository 並推送
 - [ ] Task 9：通過 GitHub Actions 並建立第一個 Release
 
 ### Checkpoint: 可交付版本
