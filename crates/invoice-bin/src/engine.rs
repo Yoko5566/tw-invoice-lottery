@@ -222,6 +222,7 @@ mod tests {
         let ds = Dataset::from_json(&json::parse(EMBEDDED_DATASET).unwrap()).unwrap();
         std::fs::create_dir_all(dir).unwrap();
         Store {
+            cloud_period: None,
             dir: dir.to_path_buf(),
             dataset: ds,
             cloud: None,

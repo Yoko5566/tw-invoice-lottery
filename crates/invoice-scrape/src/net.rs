@@ -52,6 +52,7 @@ pub fn get_bytes(url: &str, max: usize) -> Result<Vec<u8>, NetError> {
 
 fn try_get(url: &str, max: usize) -> Result<Vec<u8>, NetError> {
     let agent = ureq::AgentBuilder::new()
+        .redirects(0)
         .timeout_connect(Duration::from_secs(15))
         .timeout_read(Duration::from_secs(120))
         .user_agent(UA)

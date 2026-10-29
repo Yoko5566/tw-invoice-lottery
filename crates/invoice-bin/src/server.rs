@@ -24,6 +24,7 @@ pub fn serve(store: Store, port: u16) -> Result<u16, String> {
     let listener = bind_with_fallback(port)?;
     let actual = listener.local_addr().map_err(|e| e.to_string())?.port();
     let shared = Arc::new(Mutex::new(store));
+    let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
     println!("http://127.0.0.1:{actual}");
     std::io::stdout().flush().ok();
@@ -31,8 +32,21 @@ pub fn serve(store: Store, port: u16) -> Result<u16, String> {
     for stream in listener.incoming() {
         match stream {
             Ok(s) => {
+                use std::sync::atomic::Ordering;
+                if active.fetch_add(1, Ordering::SeqCst) >= 8 {
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    continue;
+                }
+                let active = Arc::clone(&active);
                 let st = Arc::clone(&shared);
                 std::thread::spawn(move || {
+                    struct ConnectionGuard(Arc<std::sync::atomic::AtomicUsize>);
+                    impl Drop for ConnectionGuard {
+                        fn drop(&mut self) {
+                            self.0.fetch_sub(1, Ordering::SeqCst);
+                        }
+                    }
+                    let _guard = ConnectionGuard(active);
                     if let Err(e) = handle(s, st) {
                         eprintln!("[conn] {e}");
                     }
@@ -62,11 +76,16 @@ struct Request {
 }
 
 fn handle(mut stream: TcpStream, store: Arc<Mutex<Store>>) -> std::io::Result<()> {
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(10)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(10)))?;
     let mut reader = BufReader::new(stream.try_clone()?);
 
     let mut line = String::new();
-    if reader.read_line(&mut line)? == 0 {
+    if reader.by_ref().take(8193).read_line(&mut line)? == 0 {
         return Ok(());
+    }
+    if line.len() > 8192 {
+        return json_error(&mut stream, 400, "請求行過長");
     }
     let mut parts = line.split_whitespace();
     let method = parts.next().unwrap_or("").to_string();
@@ -78,10 +97,18 @@ fn handle(mut stream: TcpStream, store: Arc<Mutex<Store>>) -> std::io::Result<()
 
     let mut content_length = 0usize;
     let mut content_type = String::new();
+    let mut host = String::new();
+    let mut origin = None;
+    let mut headers_size = 0;
+    let mut has_content_length = false;
     loop {
         let mut h = String::new();
-        if reader.read_line(&mut h)? == 0 {
+        if reader.by_ref().take(8193).read_line(&mut h)? == 0 {
             break;
+        }
+        headers_size += h.len();
+        if h.len() > 8192 || headers_size > 16384 {
+            return json_error(&mut stream, 400, "標頭過長");
         }
         let h = h.trim_end();
         if h.is_empty() {
@@ -91,11 +118,32 @@ fn handle(mut stream: TcpStream, store: Arc<Mutex<Store>>) -> std::io::Result<()
             let k = k.trim().to_ascii_lowercase();
             let v = v.trim();
             match k.as_str() {
-                "content-length" => content_length = v.parse().unwrap_or(0),
+                "content-length" => {
+                    if has_content_length {
+                        return json_error(&mut stream, 400, "重複長度標頭");
+                    }
+                    has_content_length = true;
+                    content_length = match v.parse() {
+                        Ok(n) => n,
+                        Err(_) => return json_error(&mut stream, 400, "無效長度"),
+                    };
+                }
                 "content-type" => content_type = v.to_string(),
+                "host" => {
+                    if !host.is_empty() {
+                        return json_error(&mut stream, 400, "重複 Host");
+                    }
+                    host = v.to_string();
+                }
+                "origin" => origin = Some(v.to_string()),
+                "transfer-encoding" => return json_error(&mut stream, 400, "不支援串流編碼"),
                 _ => {}
             }
         }
+    }
+
+    if !trusted_local_request(&host, origin.as_deref(), stream.local_addr()?.port()) {
+        return json_error(&mut stream, 403, "只接受本機同來源請求");
     }
 
     if content_length > MAX_BODY {
@@ -332,6 +380,7 @@ fn respond(stream: &mut TcpStream, status: u16, ctype: &str, body: &[u8]) -> std
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
+        403 => "Forbidden",
         404 => "Not Found",
         413 => "Payload Too Large",
         415 => "Unsupported Media Type",
@@ -346,12 +395,20 @@ fn respond(stream: &mut TcpStream, status: u16, ctype: &str, body: &[u8]) -> std
          Cache-Control: no-store\r\n\
          X-Content-Type-Options: nosniff\r\n\
          Referrer-Policy: no-referrer\r\n\
+         X-Frame-Options: DENY\r\n\
+         Content-Security-Policy: default-src 'self'; img-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'\r\n\
+         Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n\
          Connection: close\r\n\r\n",
         body.len()
     );
     stream.write_all(head.as_bytes())?;
     stream.write_all(body)?;
     stream.flush()
+}
+
+fn trusted_local_request(host: &str, origin: Option<&str>, port: u16) -> bool {
+    let expected = format!("127.0.0.1:{port}");
+    host == expected && origin.is_none_or(|o| o == format!("http://{expected}"))
 }
 
 /// 用系統預設瀏覽器開啟網址。
@@ -369,6 +426,22 @@ pub fn open_browser(url: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blocks_dns_rebinding_and_cross_site_requests() {
+        assert!(trusted_local_request(
+            "127.0.0.1:8787",
+            Some("http://127.0.0.1:8787"),
+            8787
+        ));
+        assert!(!trusted_local_request("evil.example:8787", None, 8787));
+        assert!(!trusted_local_request(
+            "127.0.0.1:8787",
+            Some("https://evil.example"),
+            8787
+        ));
+        assert!(!trusted_local_request("127.0.0.1:8787", Some("null"), 8787));
+    }
 
     #[test]
     fn decodes_query() {

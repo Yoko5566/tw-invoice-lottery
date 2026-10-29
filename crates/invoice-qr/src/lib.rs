@@ -108,6 +108,9 @@ pub fn parse_left(raw: &str) -> Result<EInvoiceQr, QrError> {
             want: LEFT_LEN,
         });
     }
+    if !s.is_ascii() {
+        return Err(QrError::NotQrPayload("左碼必須為 ASCII 字元".into()));
+    }
     let code = InvoiceCode::parse(&s[0..10]).map_err(|_| QrError::BadField {
         field: "字軌號碼",
         value: s[0..10].to_string(),
@@ -169,8 +172,20 @@ pub fn from_payloads(payloads: &[String]) -> Result<EInvoiceQr, QrError> {
 /// 手機翻拍常見問題：反光、歪斜、對焦不足。`rqrr` 內建多尺度掃描，
 /// 失敗時建議引導使用者「拉平、避開反光、填滿畫面」。
 pub fn decode_image_bytes(bytes: &[u8]) -> Result<Vec<String>, QrError> {
+    if bytes.len() > 32 * 1024 * 1024 {
+        return Err(QrError::NotQrPayload("圖片不得超過 32 MB".into()));
+    }
     use image::GenericImageView;
-    let img = image::load_from_memory(bytes)
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|_| QrError::NotQrPayload("無法辨識圖片格式".into()))?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    reader.limits(limits);
+    let img = reader
+        .decode()
         .map_err(|_| QrError::NotQrPayload("無法解碼圖片（支援 JPEG/PNG/WebP）".into()))?;
     let luma = img.to_luma8();
     let (w, h) = img.dimensions();
@@ -244,6 +259,13 @@ mod tests {
             parse_left("SHORT"),
             Err(QrError::WrongLength { got: 5, want: 77 })
         ));
+    }
+
+    #[test]
+    fn hostile_unicode_payload_returns_error_without_panicking() {
+        let payload = format!("{}{}", "中".repeat(25), "ab");
+        assert_eq!(payload.len(), 77);
+        assert!(parse_left(&payload).is_err());
     }
 
     #[test]
