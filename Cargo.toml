@@ -23,7 +23,7 @@ ureq = { version = "2", default-features = false, features = ["tls"] }
 flate2 = "1"
 rqrr = "0.11"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
-sha2 = "0.10"
+sha2 = "0.11"
 
 [profile.release]
 opt-level = "z"
