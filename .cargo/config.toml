@@ -4,4 +4,4 @@ debug = 1
 
 [target.x86_64-pc-windows-msvc]
 # Windows 靜態連結 CRT，避免使用者電腦缺少 VC++ 執行期
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/Brepro"]

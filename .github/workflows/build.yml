@@ -10,6 +10,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: test / ${{ matrix.os }}
@@ -20,7 +23,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.1
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
@@ -29,16 +32,38 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: test
         # 略過需要連外網的整合測試，避免官方站台不穩導致 CI 紅燈
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
+
+      - name: Build
+        run: cargo build --release --locked -p invoice-bin
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-audit --version 0.22.2 --locked
+      - run: cargo audit --deny warnings
+      - name: Scan complete Git history for secrets
+        run: |
+          curl --fail --location --output gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          curl --fail --location --output checksums.txt https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt
+          grep ' gitleaks_8.30.1_linux_x64.tar.gz$' checksums.txt | sed 's/gitleaks_8.30.1_linux_x64.tar.gz/gitleaks.tar.gz/' | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --redact --no-banner --log-opts="--all"
 
   release:
     name: release / ${{ matrix.target }}
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [test, security]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -56,19 +81,19 @@ jobs:
             target: aarch64-apple-darwin
             artifact: twiv-macos-arm64
             bin: twiv
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             artifact: twiv-macos-x64
             bin: twiv
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
 
       - name: build
-        run: cargo build --release -p invoice-bin --target ${{ matrix.target }}
+        run: cargo build --release --locked -p invoice-bin --target ${{ matrix.target }}
 
       - name: collect
         shell: bash

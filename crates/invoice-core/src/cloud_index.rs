@@ -118,7 +118,7 @@ impl CloudTier {
 
     /// 從位元組游標解碼，回傳 (索引, 已消耗長度)。
     pub fn decode(buf: &[u8]) -> Result<(Self, usize), String> {
-        if buf.len() < 6 || &buf[0..4] != MAGIC {
+        if buf.len() < 18 || &buf[0..4] != MAGIC {
             return Err("雲端索引 magic 不符".into());
         }
         if buf[4] != VERSION {
@@ -127,6 +127,9 @@ impl CloudTier {
         let prize = tier_from_id(buf[5]).ok_or("未知獎級代碼")?;
         let count = u32::from_le_bytes(buf[6..10].try_into().unwrap());
         let n = u32::from_le_bytes(buf[10..14].try_into().unwrap()) as usize;
+        if n != (count as usize).div_ceil(BLOCK) || n > (buf.len() - 18) / 12 {
+            return Err("雲端索引區塊長度無效".into());
+        }
         let mut off = 14;
         let mut anchors = Vec::with_capacity(n);
         for _ in 0..n {
@@ -145,6 +148,27 @@ impl CloudTier {
         }
         let deltas = buf[off..off + dlen].to_vec();
         off += dlen;
+        let mut position = 0;
+        let mut previous = None;
+        for (block, (&anchor, &offset)) in anchors.iter().zip(&offsets).enumerate() {
+            if offset as usize != position || previous.is_some_and(|p| p >= anchor) {
+                return Err("雲端索引排序或偏移無效".into());
+            }
+            let mut current = anchor;
+            let size = (count as usize - block * BLOCK).min(BLOCK);
+            for _ in 1..size {
+                let (delta, used) = read_varint(&deltas[position..]);
+                if used == 0 || delta == 0 {
+                    return Err("雲端索引差分無效".into());
+                }
+                current = current.checked_add(delta).ok_or("雲端索引數值溢位")?;
+                position += used;
+            }
+            previous = Some(current);
+        }
+        if position != deltas.len() {
+            return Err("雲端索引差分長度不符".into());
+        }
         Ok((
             Self {
                 prize,
@@ -201,13 +225,16 @@ fn read_varint(buf: &[u8]) -> (u64, usize) {
     let mut v = 0u64;
     let mut shift = 0;
     for (i, &b) in buf.iter().enumerate() {
+        if i >= 10 || (i == 9 && b > 1) {
+            return (0, 0);
+        }
         v |= ((b & 0x7F) as u64) << shift;
         if b & 0x80 == 0 {
             return (v, i + 1);
         }
         shift += 7;
     }
-    (v, buf.len())
+    (0, 0)
 }
 
 /// 一期完整的雲端發票專屬獎索引（含四個獎級）。
@@ -261,6 +288,19 @@ impl CloudIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_truncated_index_prefixes_return_error() {
+        let tier = CloudTier::build(Prize::Cloud500, &sample());
+        let mut bytes = Vec::new();
+        tier.encode(&mut bytes);
+        for len in 0..bytes.len() {
+            assert!(CloudTier::decode(&bytes[..len]).is_err());
+        }
+        let mut forged = bytes.clone();
+        forged[10..14].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(CloudTier::decode(&forged).is_err());
+    }
 
     fn sample() -> Vec<u64> {
         (0..5_000u64).map(|i| i * 7 + 11).collect()

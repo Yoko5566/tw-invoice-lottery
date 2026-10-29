@@ -15,3 +15,17 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Secrets, private receipts, local tool settings and generated binaries
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+credentials*.json
+/fixtures/private/
+/.codex/
+/graphify-out/
+/dist/

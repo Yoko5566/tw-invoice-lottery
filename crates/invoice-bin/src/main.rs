@@ -28,8 +28,11 @@ twiv — 台灣統一發票對獎工具
   twiv scan <圖片路徑> [--json]  讀取發票照片的 QR 並對獎
   twiv qr <圖片路徑>            只印出 QR 原始內容（除錯用）
   twiv status [--json]          顯示資料版本與可用期別
-  twiv fetch [--out 路徑]       重新抓取官方中獎號碼（維護者用）
+  twiv fetch [--out 路徑] [--check]
+                                重新抓取官方中獎號碼；--check 會拒絕過期資料
   twiv cloud [--period 11504]   下載雲端發票專屬獎名單並建立索引
+  twiv publish-data [--out-dir data] [--base-url 網址]
+                                維護者：抓取、驗證並產生資料集／雲端索引／清單
   twiv mcp                     以 MCP server 模式執行（stdio）
   twiv version                  顯示版本
 
@@ -52,6 +55,7 @@ fn main() -> ExitCode {
         "status" => run_status(rest),
         "fetch" => run_fetch(rest),
         "cloud" => run_cloud(rest),
+        "publish-data" => run_publish_data(rest),
         "mcp" => {
             let s = store::Store::load();
             mcp::run(s).map_err(|e| e.to_string())
@@ -302,12 +306,25 @@ fn run_fetch(args: &[String]) -> Result<(), String> {
     let out = flag_value(args, "--out").unwrap_or_else(|| "data/draws.json".into());
     let pages = invoice_scrape::fetch_current_and_last().map_err(|e| e.to_string())?;
     let ds = invoice_scrape::build_dataset(&pages);
+    if has_flag(args, "--check") {
+        invoice_scrape::validate_dataset_freshness(&ds, invoice_scrape::today_utc())
+            .map_err(|e| e.to_string())?;
+    }
     let text = ds.to_json().to_pretty();
     if let Some(dir) = std::path::Path::new(&out).parent() {
         std::fs::create_dir_all(dir).ok();
     }
     std::fs::write(&out, &text).map_err(|e| e.to_string())?;
-    println!("已更新 {}（{} 期）", out, ds.periods.len());
+    println!(
+        "已更新 {}（{} 期）{}",
+        out,
+        ds.periods.len(),
+        if has_flag(args, "--check") {
+            "，新鮮度檢查通過"
+        } else {
+            ""
+        }
+    );
     Ok(())
 }
 
@@ -323,6 +340,59 @@ fn run_cloud(args: &[String]) -> Result<(), String> {
         r.latest,
         r.bytes as f64 / 1_048_576.0,
         s.dir.display()
+    );
+    Ok(())
+}
+
+fn run_publish_data(args: &[String]) -> Result<(), String> {
+    let out_dir = flag_value(args, "--out-dir").unwrap_or_else(|| "data".into());
+    let base = flag_value(args, "--base-url").unwrap_or_else(|| {
+        "https://raw.githubusercontent.com/Yoko5566/tw-invoice-lottery-data/main".into()
+    });
+    let base = base.trim_end_matches('/');
+    let out_dir = std::path::PathBuf::from(out_dir);
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+
+    println!("[1/3] 抓取並驗證一般獎號碼…");
+    let pages = invoice_scrape::fetch_current_and_last().map_err(|e| e.to_string())?;
+    let ds = invoice_scrape::build_dataset(&pages);
+    invoice_scrape::validate_dataset_freshness(&ds, invoice_scrape::today_utc())
+        .map_err(|e| e.to_string())?;
+    let draws = ds.to_json().to_pretty().into_bytes();
+
+    println!("[2/3] 下載官方 PDF 並建立雲端專屬獎索引（可能需要數分鐘）…");
+    let cloud =
+        invoice_scrape::fetch_cloud_index("cloudNowNumber.html").map_err(|e| e.to_string())?;
+    let latest = ds.latest().ok_or("一般獎資料集是空的")?.period;
+    if cloud.period != latest {
+        return Err(format!(
+            "一般獎期別 {} 與雲端獎期別 {} 不一致，拒絕發布",
+            latest.code(),
+            cloud.period.code()
+        ));
+    }
+    let cloud_bytes = cloud.index.encode();
+    let cloud_name = format!("cloud_{}.bin", cloud.period.code());
+    let dataset_url = format!("{base}/data/draws.json");
+    let cloud_url = format!("{base}/data/{cloud_name}");
+    let manifest = invoice_scrape::build_manifest(
+        &ds,
+        &dataset_url,
+        &draws,
+        Some((&cloud, &cloud_url, &cloud_bytes)),
+        invoice_core::VERSION,
+    );
+
+    println!("[3/3] 寫入已驗證產物…");
+    std::fs::write(out_dir.join("draws.json"), &draws).map_err(|e| e.to_string())?;
+    std::fs::write(out_dir.join(&cloud_name), &cloud_bytes).map_err(|e| e.to_string())?;
+    std::fs::write(out_dir.join("manifest.json"), manifest.to_pretty())
+        .map_err(|e| e.to_string())?;
+    println!(
+        "完成：{}，雲端索引 {} 筆 / {:.2} MB",
+        latest.label(),
+        cloud.index.total(),
+        cloud_bytes.len() as f64 / 1_048_576.0
     );
     Ok(())
 }

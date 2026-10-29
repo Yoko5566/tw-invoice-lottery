@@ -15,7 +15,10 @@
 use crate::engine;
 use crate::store::Store;
 use invoice_core::json::{self, Json};
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
+
+const MAX_IMAGE_BYTES: usize = 32 * 1024 * 1024;
+const MAX_MESSAGE_BYTES: usize = 45 * 1024 * 1024;
 
 /// 啟動 MCP server（阻塞在 stdin）。
 pub fn run(store: Store) -> Result<(), String> {
@@ -23,9 +26,23 @@ pub fn run(store: Store) -> Result<(), String> {
     let mut stdout = std::io::stdout();
     let mut store = store;
 
-    for line in stdin.lock().lines() {
-        let line = line.map_err(|e| e.to_string())?;
-        let line = line.trim();
+    let mut input = stdin.lock();
+    loop {
+        let mut bytes = Vec::new();
+        let read = input
+            .by_ref()
+            .take((MAX_MESSAGE_BYTES + 1) as u64)
+            .read_until(b'\n', &mut bytes)
+            .map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        if bytes.len() > MAX_MESSAGE_BYTES {
+            return Err("MCP 訊息超過上限".into());
+        }
+        let line = std::str::from_utf8(&bytes)
+            .map_err(|e| e.to_string())?
+            .trim();
         if line.is_empty() {
             continue;
         }
@@ -249,6 +266,9 @@ fn call_tool(store: &mut Store, name: &str, args: &Json) -> Result<String, Strin
 
 /// 標準 base64 解碼（可容忍 `data:` 前綴與換行）。
 fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
+    if s.len() > MAX_IMAGE_BYTES.div_ceil(3) * 4 + 128 {
+        return Err("圖片不得超過 32 MB".into());
+    }
     let s = match s.find("base64,") {
         Some(i) => &s[i + 7..],
         None => s,
@@ -272,6 +292,9 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
         if bits >= 8 {
             bits -= 8;
             out.push((buf >> bits) as u8);
+            if out.len() > MAX_IMAGE_BYTES {
+                return Err("圖片不得超過 32 MB".into());
+            }
         }
     }
     Ok(out)
@@ -290,6 +313,12 @@ mod tests {
             b"hello"
         );
         assert!(base64_decode("!!!").is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_base64_before_decoding() {
+        let input = "A".repeat(MAX_IMAGE_BYTES.div_ceil(3) * 4 + 129);
+        assert!(base64_decode(&input).unwrap_err().contains("32 MB"));
     }
 
     #[test]

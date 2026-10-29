@@ -194,6 +194,7 @@ impl std::error::Error for JsonError {}
 struct P<'a> {
     b: &'a [u8],
     i: usize,
+    depth: usize,
 }
 
 impl<'a> P<'a> {
@@ -216,7 +217,11 @@ impl<'a> P<'a> {
 
     fn value(&mut self) -> Result<Json, JsonError> {
         self.ws();
-        match self.peek() {
+        if self.depth >= 64 {
+            return self.err("JSON 巢狀深度超過上限");
+        }
+        self.depth += 1;
+        let result = match self.peek() {
             None => self.err("檔案意外結束"),
             Some(b'{') => self.obj(),
             Some(b'[') => self.arr(),
@@ -225,7 +230,9 @@ impl<'a> P<'a> {
             Some(b'f') => self.lit("false", Json::Bool(false)),
             Some(b'n') => self.lit("null", Json::Null),
             Some(_) => self.num(),
-        }
+        };
+        self.depth -= 1;
+        result
     }
 
     fn lit(&mut self, word: &str, v: Json) -> Result<Json, JsonError> {
@@ -381,6 +388,7 @@ pub fn parse(s: &str) -> Result<Json, JsonError> {
     let mut p = P {
         b: s.as_bytes(),
         i: 0,
+        depth: 0,
     };
     let v = p.value()?;
     p.ws();
@@ -409,6 +417,13 @@ pub fn n(v: impl Into<f64>) -> Json {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_excessive_nesting() {
+        let input = format!("{}0{}", "[".repeat(65), "]".repeat(65));
+        assert!(parse(&input).is_err());
+        assert!(parse("[[0]]").is_ok());
+    }
 
     #[test]
     fn roundtrip_nested() {
