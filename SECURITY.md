@@ -30,7 +30,10 @@ does not technically prevent others from reading or copying the source.
 - Gitleaks scanned all Git history; no secrets detected.
 - cargo-audit: 106 dependencies, no advisories or warnings after rqrr 0.11 update.
 - Regression checks cover Unicode QR rejection, nested JSON limits, same-origin
-  HTTP requests, MCP size bounds and download URL restrictions.
+  HTTP requests, MCP size bounds, truncated/forged cloud indices and download URL restrictions.
+- Local verification: 85 tests pass; 3 existing official-network tests remain
+  opt-in. fmt and clippy pass. Live HTTP smoke tests return 200 for status/check
+  and 403 for forged Host and cross-origin update requests.
 - Existing distributed Windows EXE is unsigned and predates these fixes. Use
   newly built artifacts from the reviewed commit; do not treat old dist files as
   current releases. Antivirus verification remains pending because local Defender
