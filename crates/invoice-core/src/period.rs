@@ -4,7 +4,7 @@
 //! 01-02、03-04、05-06、07-08、09-10、11-12 月。
 //! 每逢單月 25 日開獎；領獎期間自開獎日之次月 6 日起三個月。
 //!
-//! 例：115 年 07-08 月期 → 開獎 115/07/25 → 領獎 115/10/06 ~ 116/01/05。
+//! 例：115 年 07-08 月期 → 開獎 115/09/25 → 領獎 115/10/06 ~ 116/01/05。
 
 use crate::civil::Ymd;
 
@@ -87,6 +87,18 @@ impl Period {
             roc_year: roc,
             slot,
         }
+    }
+
+    /// 指定日期當天已經公布的最新一期。
+    ///
+    /// 開獎日當天即視為已公布；這個函式供更新檢查使用，避免抓取程序
+    /// 靜默交付上一期資料。
+    pub fn latest_drawn_on(d: Ymd) -> Self {
+        let mut period = Self::containing_date(d);
+        while period.draw_date() > d {
+            period = period.prev();
+        }
+        period
     }
 
     /// 由 5 碼期別代碼還原，例：`11504` → 115 年 07-08 月。
@@ -192,6 +204,26 @@ mod tests {
         assert_eq!(
             Period::new(115, 1).unwrap().prev(),
             Period::new(114, 6).unwrap()
+        );
+    }
+
+    #[test]
+    fn latest_drawn_period_follows_the_official_calendar() {
+        assert_eq!(
+            Period::latest_drawn_on(Ymd::new(2026, 9, 24)),
+            Period::new(115, 3).unwrap()
+        );
+        assert_eq!(
+            Period::latest_drawn_on(Ymd::new(2026, 9, 25)),
+            Period::new(115, 4).unwrap()
+        );
+        assert_eq!(
+            Period::latest_drawn_on(Ymd::new(2027, 1, 24)),
+            Period::new(115, 5).unwrap()
+        );
+        assert_eq!(
+            Period::latest_drawn_on(Ymd::new(2027, 1, 25)),
+            Period::new(115, 6).unwrap()
         );
     }
 }

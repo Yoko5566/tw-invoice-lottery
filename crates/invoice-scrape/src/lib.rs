@@ -225,6 +225,43 @@ pub fn build_dataset(pages: &[DrawPage]) -> Dataset {
     ds
 }
 
+/// 確認抓取結果包含「截至指定日期已開獎的最新一期」及其上一期。
+///
+/// 這是排程的失敗閘門：官方頁面改版或抓取器只拿到舊資料時，不允許
+/// 靜默發布。
+pub fn validate_dataset_freshness(dataset: &Dataset, today: Ymd) -> Result<(), FetchError> {
+    let expected = Period::latest_drawn_on(today);
+    let actual = dataset.latest().map(|d| d.period);
+    if actual != Some(expected) {
+        return fe(format!(
+            "資料不是最新一期：預期 {}（{}），實際 {}",
+            expected.label(),
+            expected.code(),
+            actual
+                .map(|p| format!("{}（{}）", p.label(), p.code()))
+                .unwrap_or_else(|| "無資料".to_string())
+        ));
+    }
+    let previous = expected.prev();
+    if dataset.by_period(previous).is_none() {
+        return fe(format!(
+            "資料缺少上一期 {}（{}），拒絕發布不完整資料",
+            previous.label(),
+            previous.code()
+        ));
+    }
+    Ok(())
+}
+
+/// 系統目前 UTC 日期。
+pub fn today_utc() -> Ymd {
+    let days = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| (d.as_secs() as i64).div_euclid(86_400))
+        .unwrap_or(0);
+    Ymd::from_days(days)
+}
+
 /// SHA-256（十六進位小寫）。
 pub fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
@@ -336,6 +373,43 @@ mod tests {
         let m = build_manifest(&ds, "https://example.com/d.json", &bytes, None, "0.1.0");
         assert_eq!(m.str_at("dataset_sha256").unwrap().len(), 64);
         assert_eq!(m.str_at("period_latest").unwrap(), "115年07-08月");
+    }
+
+    #[test]
+    fn freshness_check_rejects_stale_or_incomplete_data() {
+        let current = Period::new(115, 4).unwrap();
+        let previous = current.prev();
+        let make = |period| {
+            invoice_core::check::Draw::new(
+                period,
+                "89996565".into(),
+                "91098182".into(),
+                vec!["54348835".into(), "44991397".into(), "06595111".into()],
+                vec![],
+            )
+        };
+
+        let mut good = Dataset::default();
+        good.upsert(make(current));
+        good.upsert(make(previous));
+        assert!(validate_dataset_freshness(&good, Ymd::new(2026, 10, 28)).is_ok());
+
+        let mut stale = Dataset::default();
+        stale.upsert(make(previous));
+        stale.upsert(make(previous.prev()));
+        assert!(validate_dataset_freshness(&stale, Ymd::new(2026, 10, 28))
+            .unwrap_err()
+            .0
+            .contains("11504"));
+
+        let mut incomplete = Dataset::default();
+        incomplete.upsert(make(current));
+        assert!(
+            validate_dataset_freshness(&incomplete, Ymd::new(2026, 10, 28))
+                .unwrap_err()
+                .0
+                .contains("上一期")
+        );
     }
 
     #[test]
